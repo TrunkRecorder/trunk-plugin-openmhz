@@ -21,6 +21,7 @@ struct Config {
     ///
     /// Leave this as it is, unless you run your own OpenMHz server.
     #[schemars(url)]
+    #[serde(alias = "uploadServer")]
     server: String,
 }
 
@@ -217,6 +218,15 @@ mod tests {
         assert!(matches!(out.status(), Some((State::Warning, _))));
         let saved = std::fs::read_to_string(dir.join("data/queue.jsonl")).unwrap();
         assert_eq!(saved.lines().count(), 1);
+    }
+
+    #[test]
+    fn trunk_recorders_server_setting_name_works() {
+        let (dir, server) = (testing::temp_dir("openmhz"), openmhz());
+        let mut h = testing::hello(&dir, json!({ "uploadServer": server.url() }));
+        h.systems[0].config = json!({ "apiKey": "good" });
+        testing::run::<OpenMhz>([HostMessage::Hello(h), HostMessage::CallConcluded(testing::call(&dir, "sys1", 5))]);
+        assert_eq!(server.requests().len(), 1);
     }
 
     #[test]
