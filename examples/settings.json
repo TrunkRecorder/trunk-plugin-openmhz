@@ -1,0 +1,4 @@
+{
+  "config": { "server": "https://api.openmhz.com" },
+  "systems": { "county": { "apiKey": "your-openmhz-api-key" } }
+}
