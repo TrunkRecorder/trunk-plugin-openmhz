@@ -153,6 +153,17 @@ mod tests {
     }
 
     #[test]
+    fn a_patched_call_sends_its_patch_list() {
+        let (dir, server) = (testing::temp_dir("openmhz-patch"), openmhz());
+        let mut call = testing::call(&dir, "sys1", 65001);
+        call.call.patched_talkgroups = vec![101, 202, 65001];
+        let out = testing::run::<OpenMhz>([hello(&dir, server.url(), json!({ "apiKey": "good" })), HostMessage::CallConcluded(call)]);
+        assert!(out.ready(), "{:?}", out.messages);
+        let r = &server.requests()[0];
+        assert_eq!(String::from_utf8(r.form_field("patch_list").unwrap()).unwrap(), "[101,202,65001]");
+    }
+
+    #[test]
     fn uploads_a_call_as_trunk_recorder_does() {
         let (dir, server) = (testing::temp_dir("openmhz"), openmhz());
         let call = testing::call(&dir, "sys1", 101);

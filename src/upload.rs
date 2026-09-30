@@ -91,10 +91,8 @@ fn form(u: &Upload, file_name: &str, audio: &[u8]) -> (Vec<u8>, String) {
             json!({ "pos": (s.pos * 100.0).round() / 100.0, "src": s.src, "tag": tag })
         })
         .collect();
-    let patches: Vec<i64> =
-        c.extra.get("patched_talkgroups").and_then(|p| p.as_array()).map(|a| a.iter().filter_map(|v| v.as_i64()).collect()).unwrap_or_default();
     // (Trunk Recorder sends a patch list only when the call was patched.)
-    let patches = if patches.len() > 1 { patches } else { Vec::new() };
+    let patches: &[u32] = if c.patched_talkgroups.len() > 1 { &c.patched_talkgroups } else { &[] };
     let fields = [
         ("freq", c.freq.to_string()),
         ("error_count", c.error_count().to_string()),
