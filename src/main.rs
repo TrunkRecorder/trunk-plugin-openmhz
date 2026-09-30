@@ -213,7 +213,10 @@ mod tests {
     fn a_server_that_is_down_keeps_the_call_for_next_time() {
         let dir = testing::temp_dir("openmhz");
         // Nothing listens on port 9 (discard) on a test machine.
-        let out = testing::run::<OpenMhz>([hello(&dir, "http://127.0.0.1:9", json!({ "apiKey": "good" })), HostMessage::CallConcluded(testing::call(&dir, "sys1", 5))]);
+        let out = testing::run::<OpenMhz>([
+            hello(&dir, "http://127.0.0.1:9", json!({ "apiKey": "good" })),
+            HostMessage::CallConcluded(testing::call(&dir, "sys1", 5)),
+        ]);
         assert!(out.results().is_empty(), "{:?}", out.results());
         assert!(matches!(out.status(), Some((State::Warning, _))));
         let saved = std::fs::read_to_string(dir.join("data/queue.jsonl")).unwrap();
