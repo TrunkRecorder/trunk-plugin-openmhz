@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.2]
+
+- The API key is marked as needed for each system, so the recorder shows which systems aren't set up for OpenMHz yet.
+- Built with trunk-recorder-plugin 0.1.1.
+
 ## [0.1.1]
 
 - Releases carry build provenance attestations: proof that GitHub Actions

@@ -38,7 +38,7 @@ struct SystemConfig {
     ///
     /// Your system's upload key, from its settings on OpenMHz. Leave it empty
     /// to not upload this system.
-    #[schemars(extend("x-secret" = true))]
+    #[schemars(extend("x-secret" = true, "x-required" = true))]
     api_key: String,
     /// Name on OpenMHz
     ///
