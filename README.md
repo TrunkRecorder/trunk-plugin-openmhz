@@ -1,6 +1,6 @@
-# OpenMHz for Trunk Recorder Lite
+# OpenMHz for Trunk Recorder Pro
 
-Uploads the calls [Trunk Recorder Lite](https://github.com/TrunkRecorder/trunk-recorder-lite)
+Uploads the calls [Trunk Recorder Pro](https://github.com/TrunkRecorder/trunk-recorder-pro)
 records to [OpenMHz](https://openmhz.com), so they can be listened to there.
 It does what Trunk Recorder's built-in OpenMHz uploader does.
 
@@ -50,7 +50,7 @@ OpenMHz**.
 
 ```sh
 cargo build --release
-trunk-lite plugin run ./target/release/openmhz ~/TrunkRecorderLite --settings examples/settings.json
+trunk-pro plugin run ./target/release/openmhz ~/TrunkRecorderPro --settings examples/settings.json
 ```
 
 ## License

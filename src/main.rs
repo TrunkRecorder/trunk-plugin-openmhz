@@ -1,4 +1,4 @@
-//! OpenMHz — a Trunk Recorder Lite plugin that uploads recorded calls to
+//! OpenMHz — a Trunk Recorder Pro plugin that uploads recorded calls to
 //! [OpenMHz](https://openmhz.com), as Trunk Recorder's OpenMHz uploader does.
 
 mod upload;

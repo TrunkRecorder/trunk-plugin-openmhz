@@ -26,7 +26,7 @@ impl Uploader {
             .timeout_global(Some(Duration::from_secs(60)))
             // OpenMHz answers refusals with a 500 and a message: read it.
             .http_status_as_error(false)
-            .user_agent(concat!("trunk-lite-openmhz/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("trunk-pro-openmhz/", env!("CARGO_PKG_VERSION")))
             .build()
             .into();
         Uploader { agent, server: server.trim_end_matches('/').to_string() }
