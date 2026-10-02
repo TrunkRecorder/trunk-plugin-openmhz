@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.1]
+
+- Releases carry build provenance attestations: proof that GitHub Actions
+  built each file from this repository at the tagged commit.
+
 ## [0.1.0]
 
 - Uploads recorded calls to OpenMHz as M4A, with the fields Trunk Recorder's
