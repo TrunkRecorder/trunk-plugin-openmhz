@@ -89,15 +89,16 @@ impl Plugin for OpenMhz {
             }
             let system = if c.system_name.trim().is_empty() { s.short_name.clone() } else { c.system_name.trim().to_string() };
             host.info(format!("uploading {} as {system} (key …{})", s.short_name, last2(&c.api_key)));
-            targets.insert(s.index, Target { system, api_key: c.api_key.trim().to_string() });
+            targets.insert(s.short_name.clone(), Target { system, api_key: c.api_key.trim().to_string() });
         }
         if targets.is_empty() {
             return Err("Add your OpenMHz API key to the systems you want to upload.".into());
         }
         let uploader = Uploader::new(&server);
-        let opts = QueueOptions { noun: "upload", ..QueueOptions::saved_in(&setup.data_dir) };
+        let opts = QueueOptions { noun: "upload", endpoint: Some("OpenMHz".into()), ..QueueOptions::saved_in(&setup.data_dir) };
         let queue = CallQueue::start(host, opts, move |call: &ConcludedCall| {
-            let Some(t) = targets.get(&call.system) else {
+            // By short name, a system's identity: a call saved for a later run still finds its system.
+            let Some(t) = targets.get(&call.call.short_name) else {
                 return Attempt::Skip("no OpenMHz API key for this system".into());
             };
             let Some(m4a) = &call.files.m4a else {
@@ -199,6 +200,18 @@ mod tests {
         assert_eq!(server.requests().len(), 1);
     }
 
+    /// A call saved in an earlier run carries that run's system number; it
+    /// is still uploaded with its own system's key, found by short name.
+    #[test]
+    fn a_call_from_an_earlier_run_finds_its_system_by_name() {
+        let (dir, server) = (testing::temp_dir("openmhz"), openmhz());
+        let mut call = testing::call(&dir, "sys1", 5);
+        call.system = 7;
+        let out = testing::run::<OpenMhz>([hello(&dir, server.url(), json!({ "apiKey": "good" })), HostMessage::CallConcluded(call)]);
+        assert_eq!(out.results()[0].1, Outcome::Ok);
+        assert_eq!(server.requests()[0].path, "/sys1/upload");
+    }
+
     #[test]
     fn a_system_by_another_name() {
         let (dir, server) = (testing::temp_dir("openmhz"), openmhz());
@@ -265,8 +278,7 @@ mod tests {
     #[test]
     fn systems_without_a_key_are_skipped() {
         let (dir, server) = (testing::temp_dir("openmhz"), openmhz());
-        let mut call = testing::call(&dir, "sys2", 5);
-        call.system = 1;
+        let call = testing::call(&dir, "sys2", 5);
         let out = testing::run::<OpenMhz>([hello(&dir, server.url(), json!({ "apiKey": "good" })), HostMessage::CallConcluded(call)]);
         assert_eq!(out.results()[0].1, Outcome::Skipped);
         assert!(server.requests().is_empty());
