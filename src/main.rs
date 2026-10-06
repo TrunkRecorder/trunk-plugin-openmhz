@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use trunk_recorder_plugin::{format, topic, Attempt, CallQueue, ConcludedCall, Host, Manifest, Plugin, QueueOptions, Setup};
+use trunk_recorder_plugin::{Attempt, CallQueue, ConcludedCall, Host, Manifest, Plugin, QueueOptions, Setup, format, topic};
 
 use upload::{Upload, Uploader};
 
@@ -131,9 +131,9 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     use trunk_recorder_plugin::testing::{self, MockServer};
-    use trunk_recorder_plugin::{HostMessage, Outcome, State, EXIT_CONFIG};
+    use trunk_recorder_plugin::{EXIT_CONFIG, HostMessage, Outcome, State};
 
     /// OpenMHz as its upload handler answers: key "good" is right for "sys1".
     fn openmhz() -> MockServer {
