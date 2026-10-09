@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+- Calls with no audio are no longer uploaded (the recorder keeps them when
+  **Keep calls with no audio** is on). They are marked skipped.
+- New per-system setting **Shortest call to upload, s**: shorter calls stay in
+  your recordings and aren't uploaded. `0`, the default, uploads every call
+  that has audio.
+
 ## [0.1.2]
 
 - The API key is marked as needed for each system, so the recorder shows which systems aren't set up for OpenMHz yet.

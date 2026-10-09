@@ -46,12 +46,20 @@ struct SystemConfig {
     /// name here.
     #[serde(alias = "openmhzSystemId")]
     system_name: String,
+    /// Shortest call to upload, s
+    ///
+    /// Calls with less audio than this aren't uploaded; they stay in your
+    /// recordings. A call with no audio at all is never uploaded. 0 uploads
+    /// every call that has some.
+    #[schemars(range(min = 0.0, max = 60.0))]
+    min_upload_s: f64,
 }
 
 /// Where a system's calls go.
 struct Target {
     system: String,
     api_key: String,
+    min_upload_s: f64,
 }
 
 struct OpenMhz {
@@ -89,7 +97,7 @@ impl Plugin for OpenMhz {
             }
             let system = if c.system_name.trim().is_empty() { s.short_name.clone() } else { c.system_name.trim().to_string() };
             host.info(format!("uploading {} as {system} (key …{})", s.short_name, last2(&c.api_key)));
-            targets.insert(s.short_name.clone(), Target { system, api_key: c.api_key.trim().to_string() });
+            targets.insert(s.short_name.clone(), Target { system, api_key: c.api_key.trim().to_string(), min_upload_s: c.min_upload_s });
         }
         if targets.is_empty() {
             return Err("Add your OpenMHz API key to the systems you want to upload.".into());
@@ -101,6 +109,13 @@ impl Plugin for OpenMhz {
             let Some(t) = targets.get(&call.call.short_name) else {
                 return Attempt::Skip("no OpenMHz API key for this system".into());
             };
+            // An OpenMHz call is its audio: a key-up with none, or too little to be worth it, stays local.
+            if call.call.call_length <= 0.0 {
+                return Attempt::Skip("the call has no audio".into());
+            }
+            if call.call.call_length < t.min_upload_s {
+                return Attempt::Skip(format!("the call is shorter than {} s", t.min_upload_s));
+            }
             let Some(m4a) = &call.files.m4a else {
                 return Attempt::Fail("this call couldn't be encoded as M4A".into());
             };
@@ -273,6 +288,47 @@ mod tests {
         let out = testing::run::<OpenMhz>([HostMessage::Hello(h)]);
         assert_eq!(out.exit_code, EXIT_CONFIG);
         assert!(out.status().unwrap().1.contains("ffmpeg"));
+    }
+
+    #[test]
+    fn a_call_with_no_audio_is_skipped_not_uploaded() {
+        let (dir, server) = (testing::temp_dir("openmhz-silent"), openmhz());
+        let mut call = testing::call(&dir, "sys1", 101);
+        call.call.call_length = 0.0;
+        let out = testing::run::<OpenMhz>([hello(&dir, server.url(), json!({ "apiKey": "good" })), HostMessage::CallConcluded(call)]);
+        let r = out.results();
+        assert_eq!(r[0].1, Outcome::Skipped, "{r:?}");
+        assert!(r[0].2.contains("no audio"), "{}", r[0].2);
+        assert!(server.requests().is_empty());
+    }
+
+    #[test]
+    fn min_upload_s_keeps_short_calls_local() {
+        let (dir, server) = (testing::temp_dir("openmhz-min"), openmhz());
+        let call = |len: f64| {
+            let mut c = testing::call(&dir, "sys1", 101);
+            c.call.call_length = len;
+            c
+        };
+        let out = testing::run::<OpenMhz>([
+            hello(&dir, server.url(), json!({ "apiKey": "good", "minUploadS": 1.0 })),
+            HostMessage::CallConcluded(call(0.4)),
+            HostMessage::CallConcluded(call(0.99)),
+            HostMessage::CallConcluded(call(1.0)),
+            HostMessage::CallConcluded(call(5.0)),
+        ]);
+        let outcomes: Vec<Outcome> = out.results().into_iter().map(|r| r.1).collect();
+        assert_eq!(outcomes, [Outcome::Skipped, Outcome::Skipped, Outcome::Ok, Outcome::Ok]);
+        assert_eq!(server.requests().len(), 2);
+    }
+
+    #[test]
+    fn by_default_any_call_with_audio_is_uploaded() {
+        let (dir, server) = (testing::temp_dir("openmhz-short"), openmhz());
+        let mut call = testing::call(&dir, "sys1", 101);
+        call.call.call_length = 0.2;
+        let out = testing::run::<OpenMhz>([hello(&dir, server.url(), json!({ "apiKey": "good" })), HostMessage::CallConcluded(call)]);
+        assert_eq!(out.results()[0].1, Outcome::Ok);
     }
 
     #[test]
