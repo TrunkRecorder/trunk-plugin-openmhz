@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+- A system can upload to a server of its own (the recorder's per-system override of the server), and each server has its own upload queue, so one that's down doesn't hold up the others.
+- Built with trunk-recorder-plugin 0.3.0.
+
 ## [0.1.2]
 
 - The API key is marked as needed for each system, so the recorder shows which systems aren't set up for OpenMHz yet.
