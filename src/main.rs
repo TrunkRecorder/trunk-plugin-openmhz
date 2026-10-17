@@ -47,6 +47,29 @@ struct SystemConfig {
     /// name here.
     #[serde(alias = "openmhzSystemId")]
     system_name: String,
+    /// Sites of their own
+    ///
+    /// A site of this system that is a system of its own on OpenMHz: its calls go there instead.
+    sites: Vec<SiteConfig>,
+}
+
+/// A site with an OpenMHz system of its own.
+#[derive(Serialize, Deserialize, JsonSchema, Default)]
+#[serde(rename_all = "camelCase", default)]
+struct SiteConfig {
+    /// Site
+    ///
+    /// Its name, as under Sites in Setup.
+    site: String,
+    /// API key
+    ///
+    /// Its OpenMHz system's upload key.
+    #[schemars(extend("x-secret" = true))]
+    api_key: String,
+    /// Name on OpenMHz
+    ///
+    /// Its system's short name on OpenMHz, if it's different from the site's name.
+    system_name: String,
 }
 
 /// Where a system's calls go.
@@ -56,6 +79,15 @@ struct Target {
     uploader: Arc<Uploader>,
     system: String,
     api_key: String,
+    /// Sites with an OpenMHz system of their own: (name on OpenMHz, API key), by site name.
+    sites: HashMap<String, (String, String)>,
+}
+
+impl Target {
+    /// Where a call heard on `site` goes: its own OpenMHz system, else the system's.
+    fn of(&self, site: &str) -> (&str, &str) {
+        self.sites.get(site).map_or((self.system.as_str(), self.api_key.as_str()), |(name, key)| (name.as_str(), key.as_str()))
+    }
 }
 
 struct OpenMhz {
@@ -107,7 +139,20 @@ impl Plugin for OpenMhz {
             let lane = lane_of(&server);
             let to = if lane.is_empty() { String::new() } else { format!(" to {lane}") };
             host.info(format!("uploading {}{to} as {system} (key …{})", s.short_name, last2(&c.api_key)));
-            targets.insert(s.short_name.clone(), Target { lane, uploader, system, api_key: c.api_key.trim().to_string() });
+            let mut sites = HashMap::new();
+            for x in &c.sites {
+                let site = x.site.trim();
+                if site.is_empty() {
+                    return Err(format!("Name the site of {} that has an OpenMHz system of its own.", s.short_name));
+                }
+                if x.api_key.trim().is_empty() {
+                    return Err(format!("Add the OpenMHz API key of {}'s site {site}.", s.short_name));
+                }
+                let name = if x.system_name.trim().is_empty() { site.to_string() } else { x.system_name.trim().to_string() };
+                host.info(format!("uploading {}'s site {site} as {name} (key …{})", s.short_name, last2(&x.api_key)));
+                sites.insert(site.to_string(), (name, x.api_key.trim().to_string()));
+            }
+            targets.insert(s.short_name.clone(), Target { lane, uploader, system, api_key: c.api_key.trim().to_string(), sites });
         }
         if targets.is_empty() {
             return Err("Add your OpenMHz API key to the systems you want to upload.".into());
@@ -125,7 +170,8 @@ impl Plugin for OpenMhz {
             let Some(m4a) = &call.files.m4a else {
                 return Attempt::Fail("this call couldn't be encoded as M4A".into());
             };
-            t.uploader.upload(&Upload { system: &t.system, api_key: &t.api_key, call: &call.call, audio: m4a })
+            let (system, api_key) = t.of(&call.call.site);
+            t.uploader.upload(&Upload { system, api_key, call: &call.call, audio: m4a })
         });
         Ok(OpenMhz { queue })
     }
@@ -166,6 +212,26 @@ mod tests {
                 (_, _) => (500, "ShortName does not exist: x\n".into()),
             }
         })
+    }
+
+    /// A site with an OpenMHz system of its own: its calls go there (named as the site unless given a name), the system's other sites' to the system's.
+    #[test]
+    fn a_site_of_its_own() {
+        let (dir, server) = (testing::temp_dir("omhz"), openmhz());
+        let sys = json!({ "apiKey": "good", "sites": [{ "site": "south", "apiKey": "southkey" }, { "site": "east", "apiKey": "eastkey", "systemName": "east-omhz" }] });
+        let call = |tg, site: &str| {
+            let mut c = testing::call(&dir, "sys1", tg);
+            c.call.site = site.into();
+            HostMessage::CallConcluded(c)
+        };
+        testing::run::<OpenMhz>([hello(&dir, server.url(), sys), call(101, "north"), call(102, "south"), call(103, "east")]);
+        let mut sent: Vec<(String, String)> =
+            server.requests().iter().map(|r| (r.path.clone(), String::from_utf8(r.form_field("api_key").unwrap_or_default()).unwrap())).collect();
+        sent.sort();
+        assert_eq!(sent, [("/east-omhz/upload".into(), "eastkey".into()), ("/south/upload".into(), "southkey".into()), ("/sys1/upload".into(), "good".into())]);
+        // A site of its own needs its name and key.
+        let out = testing::run::<OpenMhz>([hello(&dir, server.url(), json!({ "apiKey": "good", "sites": [{ "site": "south" }] }))]);
+        assert!(format!("{out:?}").contains("site south"), "{out:?}");
     }
 
     fn hello(dir: &std::path::Path, server: &str, system: Value) -> HostMessage {
