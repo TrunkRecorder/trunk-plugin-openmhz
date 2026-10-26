@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.7]
+
+- Talkgroup allow and deny lists for each system (**Only these talkgroups**,
+  **Not these talkgroups**), with `*` and `?`, as the Rdio Scanner and
+  Broadcastify plugins have. A call on a talkgroup they leave out is skipped.
+
 ## [0.1.6]
 
 - Built with trunk-recorder-plugin 0.5.0, for Trunk Recorder Pro v0.2.0: systems are numbered

@@ -9,7 +9,8 @@ use std::time::Duration;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use trunk_recorder_plugin::{Attempt, CallQueue, ConcludedCall, Host, Manifest, Plugin, QueueOptions, Setup, format, topic};
+use trunk_recorder_plugin::filter::patterns;
+use trunk_recorder_plugin::{Attempt, CallQueue, ConcludedCall, Host, Manifest, Plugin, QueueOptions, Setup, TalkgroupFilter, format, topic};
 
 use upload::{Upload, Uploader};
 
@@ -51,6 +52,18 @@ struct SystemConfig {
     ///
     /// A site of this system that is a system of its own on OpenMHz: its calls go there instead.
     sites: Vec<SiteConfig>,
+    /// Only these talkgroups
+    ///
+    /// Upload these talkgroups and no others: numbers, or patterns like 507* (* stands for any digits, ? for one). Leave it empty to upload every talkgroup.
+    #[serde(deserialize_with = "patterns")]
+    #[schemars(with = "Vec<String>")]
+    talkgroup_allow: Vec<String>,
+    /// Not these talkgroups
+    ///
+    /// Never upload these talkgroups: numbers or patterns, as above.
+    #[serde(deserialize_with = "patterns")]
+    #[schemars(with = "Vec<String>")]
+    talkgroup_deny: Vec<String>,
 }
 
 /// A site with an OpenMHz system of its own.
@@ -81,6 +94,7 @@ struct Target {
     api_key: String,
     /// Sites with an OpenMHz system of their own: (name on OpenMHz, API key), by site name.
     sites: HashMap<String, (String, String)>,
+    filter: TalkgroupFilter,
 }
 
 impl Target {
@@ -138,7 +152,9 @@ impl Plugin for OpenMhz {
             let system = if c.system_name.trim().is_empty() { s.short_name.clone() } else { c.system_name.trim().to_string() };
             let lane = lane_of(&server);
             let to = if lane.is_empty() { String::new() } else { format!(" to {lane}") };
-            host.info(format!("uploading {}{to} as {system} (key …{})", s.short_name, last2(&c.api_key)));
+            let filter = TalkgroupFilter::new(&c.talkgroup_allow, &c.talkgroup_deny);
+            let filtered = if filter.is_empty() { String::new() } else { format!(", talkgroups: {}", filter.describe()) };
+            host.info(format!("uploading {}{to} as {system} (key …{}){filtered}", s.short_name, last2(&c.api_key)));
             let mut sites = HashMap::new();
             for x in &c.sites {
                 let site = x.site.trim();
@@ -152,7 +168,7 @@ impl Plugin for OpenMhz {
                 host.info(format!("uploading {}'s site {site} as {name} (key …{})", s.short_name, last2(&x.api_key)));
                 sites.insert(site.to_string(), (name, x.api_key.trim().to_string()));
             }
-            targets.insert(s.short_name.clone(), Target { lane, uploader, system, api_key: c.api_key.trim().to_string(), sites });
+            targets.insert(s.short_name.clone(), Target { lane, uploader, system, api_key: c.api_key.trim().to_string(), sites, filter });
         }
         if targets.is_empty() {
             return Err("Add your OpenMHz API key to the systems you want to upload.".into());
@@ -167,6 +183,9 @@ impl Plugin for OpenMhz {
             let Some(t) = targets.get(&call.call.short_name) else {
                 return Attempt::Skip("no OpenMHz API key for this system".into());
             };
+            if !t.filter.passes(call.call.talkgroup) {
+                return Attempt::Skip(format!("talkgroup {} isn't uploaded (talkgroup filter)", call.call.talkgroup));
+            }
             let Some(m4a) = &call.files.m4a else {
                 return Attempt::Fail("this call couldn't be encoded as M4A".into());
             };
@@ -274,6 +293,22 @@ mod tests {
         // The M4A, by a name OpenMHz accepts.
         assert!(r.form_file_name("call").unwrap().ends_with(".m4a"));
         assert_eq!(r.form_field("call").unwrap(), std::fs::read(call.files.m4a.unwrap()).unwrap());
+    }
+
+    /// Only the allowed talkgroups, less the denied ones, are uploaded; the rest are skipped.
+    #[test]
+    fn talkgroup_filters() {
+        let (dir, server) = (testing::temp_dir("openmhz"), openmhz());
+        let out = testing::run::<OpenMhz>([
+            hello(&dir, server.url(), json!({ "apiKey": "good", "talkgroupAllow": ["1??"], "talkgroupDeny": [102] })),
+            HostMessage::CallConcluded(testing::call(&dir, "sys1", 101)),
+            HostMessage::CallConcluded(testing::call(&dir, "sys1", 102)),
+            HostMessage::CallConcluded(testing::call(&dir, "sys1", 1001)),
+        ]);
+        let skipped = out.results().iter().filter(|r| r.1 == Outcome::Skipped).count();
+        assert_eq!(skipped, 2);
+        let sent: Vec<String> = server.requests().iter().map(|r| String::from_utf8(r.form_field("talkgroup_num").unwrap()).unwrap()).collect();
+        assert_eq!(sent, ["101"]);
     }
 
     #[test]

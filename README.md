@@ -26,6 +26,14 @@ For each system:
 | **API key** | The system's upload key from OpenMHz. Leave it empty to not upload that system. |
 | **Name on OpenMHz** | The system's short name on OpenMHz, if it differs from its short name in the recorder. |
 | **Sites of their own** | A site of the system that is a system of its own on OpenMHz: its name (as under Sites in Setup), its OpenMHz API key, and its name on OpenMHz if not the site's. Its calls go there; the system's other sites' go to the system's. |
+| **Only these talkgroups** | Upload these talkgroups and no others. Leave it empty to upload all of them. |
+| **Not these talkgroups** | Never upload these talkgroups. |
+
+Talkgroups can be numbers or patterns: `*` stands for any digits and `?` for
+one, so `507*` is every talkgroup starting with 507. When both lists are set,
+a talkgroup has to be in the first and not in the second. A call on a
+talkgroup the lists leave out is marked skipped. The lists apply to all of a
+system's calls, its sites of their own included.
 
 ## What it does with calls
 
@@ -55,7 +63,8 @@ first one's OpenMHz settings: add the others' API keys there.
 
 Trunk Recorder's settings map across: `uploadServer` is **Upload server**, and
 each system's `apiKey` and `openmhzSystemId` are **API key** and **Name on
-OpenMHz**. Trunk Recorder systems that are sites of one system (`multiSite`)
+OpenMHz**. Trunk Recorder's OpenMHz uploader has no talkgroup lists; to leave
+talkgroups out there you had to leave them out of recording. Trunk Recorder systems that are sites of one system (`multiSite`)
 are one system here: give each site that has its own OpenMHz system under
 **Sites of their own**.
 
