@@ -25,7 +25,16 @@ For each system:
 |---|---|
 | **API key** | The system's upload key from OpenMHz. Leave it empty to not upload that system. |
 | **Name on OpenMHz** | The system's short name on OpenMHz, if it differs from its short name in the recorder. |
+| **Talkgroups** | **Every talkgroup**, **Only some** or **All but some**. |
+| **Only these** | With **Only some**: upload these talkgroups and no others. |
+| **Except these** | With **Only some** or **All but some**: never upload these. |
 | **Sites of their own** | A site of the system that is a system of its own on OpenMHz: its name (as under Sites in Setup), its OpenMHz API key, and its name on OpenMHz if not the site's. Its calls go there; the system's other sites' go to the system's. |
+
+Talkgroups can be numbers, ranges or patterns: `1000-1099` is every talkgroup
+from 1000 to 1099, `*` stands for any digits and `?` for one, so `507*` is
+every talkgroup starting with 507 and `12???` every five-digit one starting
+with 12. Separate them with commas or spaces. The plugin won't start with an
+entry that's none of these, and says which.
 
 ## What it does with calls
 

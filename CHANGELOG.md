@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7]
+
+- **Talkgroups**: upload every talkgroup, only some or all but some, chosen on each system's
+  card. Lists take numbers, ranges (`1000-1099`) and patterns (`507*`); the plugin won't start with
+  an entry that's none of them, saying which. Calls on the others are skipped.
+- Built with trunk-recorder-plugin 0.8.0 (its `Talkgroups`), for Trunk Recorder Pro v0.2.10.
+
 ## [0.1.6]
 
 - Built with trunk-recorder-plugin 0.5.0, for Trunk Recorder Pro v0.2.0: systems are numbered

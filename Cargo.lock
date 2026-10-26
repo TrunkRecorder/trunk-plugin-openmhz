@@ -159,7 +159,7 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
 name = "openmhz"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "schemars",
  "serde",
@@ -372,9 +372,9 @@ dependencies = [
 
 [[package]]
 name = "trunk-recorder-plugin"
-version = "0.5.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a7504b42cca72ec6457beb7ac279f3a4fbe16054f86be57eb1e28a70dd6394d"
+checksum = "9da2b5da860ea26119864505f20aa59c0628c8d7959bdef9c794ec1868fc21c1"
 dependencies = [
  "schemars",
  "serde",
