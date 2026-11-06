@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.8]
+
+- Four uploads at once for each server, up from two. Every system sending to the same server shares
+  them, and at a few thousand calls an hour two couldn't keep up, so calls waited and reached
+  OpenMHz late.
+
 ## [0.1.7]
 
 - **Talkgroups**: upload every talkgroup, only some or all but some, chosen on each system's

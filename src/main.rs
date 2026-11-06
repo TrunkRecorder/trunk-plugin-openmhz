@@ -98,6 +98,11 @@ struct OpenMhz {
     queue: CallQueue,
 }
 
+/// Uploads worked on at once, for each server. Every system sending to the
+/// same server shares them: at 4800 calls an hour, the SDK's 2 would leave
+/// each upload (its audio included) 1.5 s before calls start to wait.
+const UPLOAD_THREADS: usize = 4;
+
 /// A server's lane in the queue, and the name it goes by on the dashboard
 /// ("OpenMHz at <host>"): OpenMHz's own is just "OpenMHz".
 fn lane_of(server: &str) -> String {
@@ -166,7 +171,7 @@ impl Plugin for OpenMhz {
         // Each server is a lane of the queue: one that's down holds up no other.
         let targets = Arc::new(targets);
         let lanes = targets.clone();
-        let opts = QueueOptions { noun: "upload", endpoint: Some("OpenMHz".into()), ..QueueOptions::saved_in(&setup.data_dir) };
+        let opts = QueueOptions { threads: UPLOAD_THREADS, noun: "upload", endpoint: Some("OpenMHz".into()), ..QueueOptions::saved_in(&setup.data_dir) };
         let lane = move |call: &ConcludedCall| lanes.get(&call.call.short_name).map(|t| t.lane.clone()).unwrap_or_default();
         let queue = CallQueue::start_by(host, opts, lane, move |call: &ConcludedCall| {
             // By short name, a system's identity: a call saved for a later run still finds its system.
