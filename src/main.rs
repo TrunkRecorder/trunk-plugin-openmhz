@@ -20,7 +20,7 @@ pub const DEFAULT_SERVER: &str = "https://api.openmhz.com";
 struct Config {
     /// Upload server
     ///
-    /// Leave this as it is, unless you run your own OpenMHz server.
+    /// Only for your own OpenMHz server
     #[schemars(url)]
     #[serde(alias = "uploadServer")]
     server: String,
@@ -37,41 +37,41 @@ impl Default for Config {
 struct SystemConfig {
     /// API key
     ///
-    /// Your system's upload key, from its settings on OpenMHz. Leave it empty
-    /// to not upload this system.
+    /// From the system's page on OpenMHz · empty: not uploaded
     #[schemars(extend("x-secret" = true, "x-required" = true))]
     api_key: String,
     /// Name on OpenMHz
     ///
-    /// The system's short name on OpenMHz, if it's different from its short
-    /// name here.
+    /// If not its short name here
     #[serde(alias = "openmhzSystemId")]
     system_name: String,
     // The talkgroups to upload: a menu, and the lists it asks for.
     #[serde(flatten)]
     talkgroups: Talkgroups,
-    /// Sites of their own
+    /// Separate sites
     ///
-    /// A site of this system that is a system of its own on OpenMHz: its calls go there instead.
+    /// Sites uploaded to an OpenMHz system of their own
     sites: Vec<SiteConfig>,
 }
 
+/// Site
+///
 /// A site with an OpenMHz system of its own.
 #[derive(Serialize, Deserialize, JsonSchema, Default)]
 #[serde(rename_all = "camelCase", default)]
 struct SiteConfig {
     /// Site
     ///
-    /// Its name, as under Sites in Setup.
+    /// As named under Sites
     site: String,
     /// API key
     ///
-    /// Its OpenMHz system's upload key.
+    /// Of its OpenMHz system
     #[schemars(extend("x-secret" = true))]
     api_key: String,
     /// Name on OpenMHz
     ///
-    /// Its system's short name on OpenMHz, if it's different from the site's name.
+    /// If not the site's name
     system_name: String,
 }
 
@@ -129,7 +129,7 @@ impl Plugin for OpenMhz {
     fn start(host: Host, setup: Setup<Config, SystemConfig>) -> Result<Self, String> {
         // OpenMHz takes M4A or MP3, not WAV.
         if !setup.has_format(format::M4A) {
-            return Err("OpenMHz needs calls as M4A, and there's no M4A encoder on this computer. Install ffmpeg, then start recording again.".into());
+            return Err("No M4A encoder: install ffmpeg, then Start again".into());
         }
         // One uploader for each server (a system can name a server of its own).
         let mut uploaders: HashMap<String, Arc<Uploader>> = HashMap::new();
@@ -141,7 +141,7 @@ impl Plugin for OpenMhz {
             }
             let server = s.settings.server.trim().trim_end_matches('/').to_string();
             if !(server.starts_with("https://") || server.starts_with("http://")) {
-                return Err(format!("The upload server has to be a web address (https://…), not \"{server}\""));
+                return Err(format!("Upload server: a web address (https://…), not \"{server}\""));
             }
             let uploader = uploaders.entry(server.clone()).or_insert_with(|| Arc::new(Uploader::new(&server))).clone();
             let system = if c.system_name.trim().is_empty() { s.short_name.clone() } else { c.system_name.trim().to_string() };
@@ -154,10 +154,10 @@ impl Plugin for OpenMhz {
             for x in &c.sites {
                 let site = x.site.trim();
                 if site.is_empty() {
-                    return Err(format!("Name the site of {} that has an OpenMHz system of its own.", s.short_name));
+                    return Err(format!("{}: a separate site needs its name", s.short_name));
                 }
                 if x.api_key.trim().is_empty() {
-                    return Err(format!("Add the OpenMHz API key of {}'s site {site}.", s.short_name));
+                    return Err(format!("{}, site {site}: add its API key", s.short_name));
                 }
                 let name = if x.system_name.trim().is_empty() { site.to_string() } else { x.system_name.trim().to_string() };
                 host.info(format!("uploading {}'s site {site} as {name} (key …{})", s.short_name, last2(&x.api_key)));
@@ -166,7 +166,7 @@ impl Plugin for OpenMhz {
             targets.insert(s.short_name.clone(), Target { lane, uploader, system, api_key: c.api_key.trim().to_string(), sites, filter });
         }
         if targets.is_empty() {
-            return Err("Add your OpenMHz API key to the systems you want to upload.".into());
+            return Err("No system has an API key: add one on its card in Setup".into());
         }
         // Each server is a lane of the queue: one that's down holds up no other.
         let targets = Arc::new(targets);
@@ -176,13 +176,13 @@ impl Plugin for OpenMhz {
         let queue = CallQueue::start_by(host, opts, lane, move |call: &ConcludedCall| {
             // By short name, a system's identity: a call saved for a later run still finds its system.
             let Some(t) = targets.get(&call.call.short_name) else {
-                return Attempt::Skip("no OpenMHz API key for this system".into());
+                return Attempt::Skip("no API key for this system".into());
             };
             if !t.filter.passes(call.call.talkgroup) {
-                return Attempt::Skip(format!("talkgroup {} isn't uploaded (talkgroup filter)", call.call.talkgroup));
+                return Attempt::Skip(format!("talkgroup {} filtered out", call.call.talkgroup));
             }
             let Some(m4a) = &call.files.m4a else {
-                return Attempt::Fail("this call couldn't be encoded as M4A".into());
+                return Attempt::Fail("no M4A for this call".into());
             };
             let (system, api_key) = t.of(&call.call.site);
             t.uploader.upload(&Upload { system, api_key, call: &call.call, audio: m4a })

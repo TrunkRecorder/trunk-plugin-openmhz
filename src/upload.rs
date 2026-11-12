@@ -66,10 +66,10 @@ fn outcome(status: u16, text: &str, system: &str, server: &str) -> Attempt {
         return Attempt::Fail(format!("OpenMHz has no system named {system}"));
     }
     if text.contains("invalid filename") {
-        return Attempt::Fail("OpenMHz refused the file (it takes M4A or MP3)".into());
+        return Attempt::Fail("OpenMHz refused the file: M4A or MP3 only".into());
     }
     if text.contains("Talkgroup does not exist") {
-        return Attempt::Skip("OpenMHz ignores talkgroups it doesn't know on this system".into());
+        return Attempt::Skip("talkgroup unknown to OpenMHz".into());
     }
     let what = text.trim().lines().next().unwrap_or("").chars().take(200).collect::<String>();
     let why = if what.is_empty() { format!("HTTP {status}") } else { format!("HTTP {status}: {what}") };
