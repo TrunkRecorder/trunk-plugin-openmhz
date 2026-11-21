@@ -17,7 +17,7 @@ It does what Trunk Recorder's built-in OpenMHz uploader does.
 
 | Setting | |
 |---|---|
-| **Upload server** | Leave it as it is, unless you run your own OpenMHz server. |
+| **Upload server** | Leave it as it is, unless you run your own OpenMHz server. A system can send to another (its *shared settings* on its card in Setup). |
 
 For each system:
 
