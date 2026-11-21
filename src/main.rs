@@ -122,6 +122,8 @@ impl Plugin for OpenMhz {
             subscribe: vec![topic::CALL_CONCLUDED.into()],
             audio_formats: vec![format::M4A.into()],
             homepage: "https://openmhz.com".into(),
+            // A system can upload to another server (one of its own).
+            system_overrides: vec!["server".into()],
             ..trunk_recorder_plugin::manifest!()
         }
     }
@@ -377,8 +379,11 @@ mod tests {
         assert_eq!(out.exit_code, EXIT_CONFIG);
         assert!(out.status().unwrap().1.starts_with("sys1's talkgroups: \"1-\" isn't a talkgroup"), "{:?}", out.status());
         // The form: the menu after the name on OpenMHz, its lists when they apply.
-        let s = trunk_recorder_plugin::describe::<OpenMhz>().system_config.unwrap();
+        let m = trunk_recorder_plugin::describe::<OpenMhz>();
+        let s = m.system_config.unwrap();
         assert_eq!(s["x-order"], json!(["apiKey", "systemName", "talkgroupMode", "talkgroupAllow", "talkgroupDeny", "sites"]));
+        // What a system can set again is one of its settings.
+        assert!(m.system_overrides.iter().all(|k| m.config.as_ref().unwrap()["properties"].get(k).is_some()), "{:?}", m.system_overrides);
     }
 
     #[test]
