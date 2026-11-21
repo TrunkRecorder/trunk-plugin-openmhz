@@ -28,7 +28,6 @@ For each system:
 | **Talkgroups** | **Every talkgroup**, **Only some** or **All but some**. |
 | **Only these** | With **Only some**: upload these talkgroups and no others. |
 | **Except these** | With **Only some** or **All but some**: never upload these. |
-| **Separate sites** | A site of the system that is a system of its own on OpenMHz: its name (as under Sites in Setup), its OpenMHz API key, and its name on OpenMHz if not the site's. Its calls go there; the system's other sites' go to the system's. |
 
 Talkgroups can be numbers, ranges or patterns: `1000-1099` is every talkgroup
 from 1000 to 1099, `*` stands for any digits and `?` for one, so `507*` is
@@ -54,19 +53,21 @@ your OpenMHz system ignores are marked skipped.
 
 In Trunk Recorder Pro a system can have several sites, and a call heard on
 more than one is saved once, from the site that heard it best. With one
-OpenMHz system for all of them there is nothing to set. If each site has an
-OpenMHz system of its own (as when each was a system in Trunk Recorder), list
-those sites under **Separate sites**. A setup from before sites existed
-became one system with a site per old system, named as it was and keeping the
-first one's OpenMHz settings: add the others' API keys there.
+OpenMHz system for all of them there is nothing to set. If a site has an
+OpenMHz system of its own (as when each was a system in Trunk Recorder), give
+it its **API key** (and **Name on OpenMHz**, if not the site's name) in the
+site's row on the system's card in Setup. Every call it heard goes there,
+whichever site's copy was kept; a call two such sites heard goes to both, and
+one only the system's other sites heard goes to the system's. **Sites** on the
+card turns the plugin off for a site.
 
 ## Coming from Trunk Recorder
 
 Trunk Recorder's settings map across: `uploadServer` is **Upload server**, and
 each system's `apiKey` and `openmhzSystemId` are **API key** and **Name on
 OpenMHz**. Trunk Recorder systems that are sites of one system (`multiSite`)
-are one system here: give each site that has its own OpenMHz system under
-**Separate sites**.
+are one system here: give each site that has its own OpenMHz system its API
+key in its row on the system's card.
 
 ## Building
 

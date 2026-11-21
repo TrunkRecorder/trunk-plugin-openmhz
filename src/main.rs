@@ -9,7 +9,9 @@ use std::time::Duration;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use trunk_recorder_plugin::{Attempt, CallQueue, ConcludedCall, Host, Manifest, Plugin, QueueOptions, Setup, TalkgroupFilter, Talkgroups, format, topic};
+use trunk_recorder_plugin::{
+    Attempt, CallQueue, ConcludedCall, Host, Manifest, Plugin, QueueOptions, Setup, System, TalkgroupFilter, Talkgroups, format, topic,
+};
 
 use upload::{Upload, Uploader};
 
@@ -48,31 +50,6 @@ struct SystemConfig {
     // The talkgroups to upload: a menu, and the lists it asks for.
     #[serde(flatten)]
     talkgroups: Talkgroups,
-    /// Separate sites
-    ///
-    /// Sites uploaded to an OpenMHz system of their own
-    sites: Vec<SiteConfig>,
-}
-
-/// Site
-///
-/// A site with an OpenMHz system of its own.
-#[derive(Serialize, Deserialize, JsonSchema, Default)]
-#[serde(rename_all = "camelCase", default)]
-struct SiteConfig {
-    /// Site
-    ///
-    /// As named under Sites
-    site: String,
-    /// API key
-    ///
-    /// Of its OpenMHz system
-    #[schemars(extend("x-secret" = true))]
-    api_key: String,
-    /// Name on OpenMHz
-    ///
-    /// If not the site's name
-    system_name: String,
 }
 
 /// Where a system's calls go.
@@ -80,18 +57,28 @@ struct Target {
     /// The queue's lane for its server: its host ("" for OpenMHz's own).
     lane: String,
     uploader: Arc<Uploader>,
-    system: String,
-    api_key: String,
-    /// Sites with an OpenMHz system of their own: (name on OpenMHz, API key), by site name.
-    sites: HashMap<String, (String, String)>,
     filter: TalkgroupFilter,
+    /// The system, with its settings and its sites' ([`System::targets`]).
+    system: System<Config, SystemConfig>,
 }
 
-impl Target {
-    /// Where a call heard on `site` goes: its own OpenMHz system, else the system's.
-    fn of(&self, site: &str) -> (&str, &str) {
-        self.sites.get(site).map_or((self.system.as_str(), self.api_key.as_str()), |(name, key)| (name.as_str(), key.as_str()))
-    }
+/// The OpenMHz system settings send to: its name there (empty: `name`) and its API key (None: they have no key).
+fn node<'a>(c: &'a SystemConfig, name: &'a str) -> Option<(&'a str, &'a str)> {
+    let key = c.api_key.trim();
+    let named = c.system_name.trim();
+    (!key.is_empty()).then_some((if named.is_empty() { name } else { named }, key))
+}
+
+/// One call's attempts, one for each OpenMHz system it went to, as one:
+/// try again if any should be, else failed if any failed, else done if any took it.
+fn together(attempts: Vec<Attempt>) -> Attempt {
+    let rank = |a: &Attempt| match a {
+        Attempt::Retry(_) => 3,
+        Attempt::Fail(_) => 2,
+        Attempt::Done { .. } => 1,
+        Attempt::Skip(_) => 0,
+    };
+    attempts.into_iter().max_by_key(rank).unwrap_or(Attempt::Skip("nowhere to send it".into()))
 }
 
 struct OpenMhz {
@@ -124,6 +111,8 @@ impl Plugin for OpenMhz {
             homepage: "https://openmhz.com".into(),
             // A system can upload to another server (one of its own).
             system_overrides: vec!["server".into()],
+            // A site that's an OpenMHz system of its own.
+            site_overrides: vec!["apiKey".into(), "systemName".into()],
             ..trunk_recorder_plugin::manifest!()
         }
     }
@@ -135,10 +124,15 @@ impl Plugin for OpenMhz {
         }
         // One uploader for each server (a system can name a server of its own).
         let mut uploaders: HashMap<String, Arc<Uploader>> = HashMap::new();
-        let mut targets = HashMap::new();
-        for s in &setup.systems {
+        // By short name, and the name of each system id: a call finds its system by id, the same
+        // after a rename (one saved by a recorder before ids, by short name).
+        let mut targets: HashMap<String, Target> = HashMap::new();
+        let mut names: HashMap<u32, String> = HashMap::new();
+        let data_dir = setup.data_dir.clone();
+        for s in setup.systems {
             let Some(c) = &s.config else { continue };
-            if c.api_key.trim().is_empty() {
+            let sites: Vec<(&str, (&str, &str))> = s.sites.iter().filter_map(|t| Some((t.name.as_str(), node(t.config.as_ref()?, &t.name)?))).collect();
+            if node(c, &s.short_name).is_none() && sites.is_empty() {
                 continue;
             }
             let server = s.settings.server.trim().trim_end_matches('/').to_string();
@@ -146,26 +140,21 @@ impl Plugin for OpenMhz {
                 return Err(format!("Upload server: a web address (https://…), not \"{server}\""));
             }
             let uploader = uploaders.entry(server.clone()).or_insert_with(|| Arc::new(Uploader::new(&server))).clone();
-            let system = if c.system_name.trim().is_empty() { s.short_name.clone() } else { c.system_name.trim().to_string() };
             let filter = c.talkgroups.filter_for(&s.short_name)?;
             let filtered = if filter.is_empty() { String::new() } else { format!(", talkgroups: {}", filter.describe()) };
             let lane = lane_of(&server);
             let to = if lane.is_empty() { String::new() } else { format!(" to {lane}") };
-            host.info(format!("uploading {}{to} as {system} (key …{}){filtered}", s.short_name, last2(&c.api_key)));
-            let mut sites = HashMap::new();
-            for x in &c.sites {
-                let site = x.site.trim();
-                if site.is_empty() {
-                    return Err(format!("{}: a separate site needs its name", s.short_name));
-                }
-                if x.api_key.trim().is_empty() {
-                    return Err(format!("{}, site {site}: add its API key", s.short_name));
-                }
-                let name = if x.system_name.trim().is_empty() { site.to_string() } else { x.system_name.trim().to_string() };
-                host.info(format!("uploading {}'s site {site} as {name} (key …{})", s.short_name, last2(&x.api_key)));
-                sites.insert(site.to_string(), (name, x.api_key.trim().to_string()));
+            match node(c, &s.short_name) {
+                Some((name, key)) => host.info(format!("uploading {}{to} as {name} (key …{}){filtered}", s.short_name, last2(key))),
+                None => host.info(format!("uploading {}{to} only from its sites with an OpenMHz system of their own{filtered}", s.short_name)),
             }
-            targets.insert(s.short_name.clone(), Target { lane, uploader, system, api_key: c.api_key.trim().to_string(), sites, filter });
+            for (site, (name, key)) in &sites {
+                host.info(format!("uploading {}'s site {site} as {name} (key …{})", s.short_name, last2(key)));
+            }
+            if s.id != 0 {
+                names.insert(s.id, s.short_name.clone());
+            }
+            targets.insert(s.short_name.clone(), Target { lane, uploader, filter, system: s });
         }
         if targets.is_empty() {
             return Err("No system has an API key: add one on its card in Setup".into());
@@ -173,11 +162,14 @@ impl Plugin for OpenMhz {
         // Each server is a lane of the queue: one that's down holds up no other.
         let targets = Arc::new(targets);
         let lanes = targets.clone();
-        let opts = QueueOptions { threads: UPLOAD_THREADS, noun: "upload", endpoint: Some("OpenMHz".into()), ..QueueOptions::saved_in(&setup.data_dir) };
-        let lane = move |call: &ConcludedCall| lanes.get(&call.call.short_name).map(|t| t.lane.clone()).unwrap_or_default();
+        let opts = QueueOptions { threads: UPLOAD_THREADS, noun: "upload", endpoint: Some("OpenMHz".into()), ..QueueOptions::saved_in(&data_dir) };
+        let names = Arc::new(names);
+        // A call's system: by its id, else (a call from before ids) its short name.
+        let of = move |call: &ConcludedCall| names.get(&call.call.system_id).cloned().unwrap_or_else(|| call.call.short_name.clone());
+        let lane_of_call = of.clone();
+        let lane = move |call: &ConcludedCall| lanes.get(&lane_of_call(call)).map(|t| t.lane.clone()).unwrap_or_default();
         let queue = CallQueue::start_by(host, opts, lane, move |call: &ConcludedCall| {
-            // By short name, a system's identity: a call saved for a later run still finds its system.
-            let Some(t) = targets.get(&call.call.short_name) else {
+            let Some(t) = targets.get(&of(call)) else {
                 return Attempt::Skip("no API key for this system".into());
             };
             if !t.filter.passes(call.call.talkgroup) {
@@ -186,8 +178,18 @@ impl Plugin for OpenMhz {
             let Some(m4a) = &call.files.m4a else {
                 return Attempt::Fail("no M4A for this call".into());
             };
-            let (system, api_key) = t.of(&call.call.site);
-            t.uploader.upload(&Upload { system, api_key, call: &call.call, audio: m4a })
+            // Each OpenMHz system the sites that heard it send to, once (a site's named as the site unless given a name).
+            let mut nodes: Vec<(&str, &str)> = Vec::new();
+            for d in t.system.targets(&call.call) {
+                let name = d.site.map_or(t.system.short_name.as_str(), |s| s.name.as_str());
+                if let Some(n) = node(d.config, name).filter(|n| !nodes.contains(n)) {
+                    nodes.push(n);
+                }
+            }
+            if nodes.is_empty() {
+                return Attempt::Skip("none of the sites that heard it has an OpenMHz system".into());
+            }
+            together(nodes.into_iter().map(|(system, api_key)| t.uploader.upload(&Upload { system, api_key, call: &call.call, audio: m4a })).collect())
         });
         Ok(OpenMhz { queue })
     }
@@ -216,7 +218,7 @@ mod tests {
     use super::*;
     use serde_json::{Value, json};
     use trunk_recorder_plugin::testing::{self, MockServer};
-    use trunk_recorder_plugin::{EXIT_CONFIG, HostMessage, Outcome, State, SystemInfo};
+    use trunk_recorder_plugin::{EXIT_CONFIG, HostMessage, Outcome, SiteInfo, SiteRef, State, SystemInfo};
 
     /// OpenMHz as its upload handler answers: key "good" is right for "sys1".
     fn openmhz() -> MockServer {
@@ -230,24 +232,39 @@ mod tests {
         })
     }
 
-    /// A site with an OpenMHz system of its own: its calls go there (named as the site unless given a name), the system's other sites' to the system's.
+    /// A site with an OpenMHz system of its own (its settings in Setup): the calls it heard go there
+    /// (named as the site unless given a name), whichever copy was kept; those only the others heard, to the system's.
     #[test]
     fn a_site_of_its_own() {
         let (dir, server) = (testing::temp_dir("omhz"), openmhz());
-        let sys = json!({ "apiKey": "good", "sites": [{ "site": "south", "apiKey": "southkey" }, { "site": "east", "apiKey": "eastkey", "systemName": "east-omhz" }] });
-        let call = |tg, site: &str| {
+        // (The recorder sends each site's settings as the system's with what it sets again.)
+        let mut h = testing::hello(&dir, json!({ "server": server.url() }));
+        h.systems[0].config = json!({ "apiKey": "good" });
+        h.systems[0].sites = vec![
+            SiteInfo { id: 7, name: "north".into(), config: Value::Null },
+            SiteInfo { id: 8, name: "south".into(), config: json!({ "apiKey": "southkey" }) },
+            SiteInfo { id: 9, name: "east".into(), config: json!({ "apiKey": "eastkey", "systemName": "east-omhz" }) },
+        ];
+        let call = |tg, heard: &[(u32, &str)]| {
             let mut c = testing::call(&dir, "sys1", tg);
-            c.call.site = site.into();
+            c.call.site = heard[0].1.into();
+            c.call.sites = heard.iter().map(|&(id, name)| SiteRef { id, name: name.into() }).collect();
             HostMessage::CallConcluded(c)
         };
-        testing::run::<OpenMhz>([hello(&dir, server.url(), sys), call(101, "north"), call(102, "south"), call(103, "east")]);
+        testing::run::<OpenMhz>([HostMessage::Hello(h), call(101, &[(7, "north")]), call(102, &[(7, "north"), (8, "south")]), call(103, &[(9, "east")])]);
         let mut sent: Vec<(String, String)> =
             server.requests().iter().map(|r| (r.path.clone(), String::from_utf8(r.form_field("api_key").unwrap_or_default()).unwrap())).collect();
         sent.sort();
-        assert_eq!(sent, [("/east-omhz/upload".into(), "eastkey".into()), ("/south/upload".into(), "southkey".into()), ("/sys1/upload".into(), "good".into())]);
-        // A site of its own needs its name and key.
-        let out = testing::run::<OpenMhz>([hello(&dir, server.url(), json!({ "apiKey": "good", "sites": [{ "site": "south" }] }))]);
-        assert!(format!("{out:?}").contains("site south"), "{out:?}");
+        assert_eq!(
+            sent,
+            [
+                ("/east-omhz/upload".into(), "eastkey".into()),
+                ("/south/upload".into(), "southkey".into()),
+                ("/sys1/upload".into(), "good".into()),
+                ("/sys1/upload".into(), "good".into())
+            ],
+            "north's: the system's; north and south's: both; east's: its own, by its name there"
+        );
     }
 
     fn hello(dir: &std::path::Path, server: &str, system: Value) -> HostMessage {
@@ -381,7 +398,7 @@ mod tests {
         // The form: the menu after the name on OpenMHz, its lists when they apply.
         let m = trunk_recorder_plugin::describe::<OpenMhz>();
         let s = m.system_config.unwrap();
-        assert_eq!(s["x-order"], json!(["apiKey", "systemName", "talkgroupMode", "talkgroupAllow", "talkgroupDeny", "sites"]));
+        assert_eq!(s["x-order"], json!(["apiKey", "systemName", "talkgroupMode", "talkgroupAllow", "talkgroupDeny"]));
         // What a system can set again is one of its settings.
         assert!(m.system_overrides.iter().all(|k| m.config.as_ref().unwrap()["properties"].get(k).is_some()), "{:?}", m.system_overrides);
     }
