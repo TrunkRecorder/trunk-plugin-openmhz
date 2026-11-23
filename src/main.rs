@@ -74,11 +74,6 @@ fn node<'a>(c: &'a SystemConfig, name: &'a str) -> Option<(&'a str, &'a str)> {
     (!key.is_empty()).then_some((if named.is_empty() { name } else { named }, key))
 }
 
-/// A call's audio, ms: `call_length` is whole seconds (a record without `call_length_ms`, its only length).
-fn audio_ms(call: &ConcludedCall) -> i64 {
-    Some(call.call.call_length_ms).filter(|&l| l > 0).unwrap_or((call.call.call_length * 1000.0).round() as i64)
-}
-
 struct OpenMhz {
     queue: CallQueue,
 }
@@ -174,12 +169,11 @@ impl Plugin for OpenMhz {
                 return Attempt::Skip(format!("talkgroup {} filtered out", call.call.talkgroup));
             }
             // An OpenMHz call is its audio: one with none (kept by "Keep calls with no audio"), or too little, stays local.
-            let ms = audio_ms(call);
-            if ms <= 0 {
+            if !call.call.has_audio() {
                 return Attempt::Skip("no audio".into());
             }
             let min_s = t.system.settings.min_upload_s;
-            if (ms as f64) < min_s * 1000.0 {
+            if (call.call.audio_ms() as f64) < min_s * 1000.0 {
                 return Attempt::Skip(format!("shorter than {min_s} s"));
             }
             let Some(m4a) = &call.files.m4a else {
