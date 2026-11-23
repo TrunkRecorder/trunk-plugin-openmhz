@@ -26,11 +26,16 @@ struct Config {
     #[schemars(url)]
     #[serde(alias = "uploadServer")]
     server: String,
+    /// Shortest upload, s
+    ///
+    /// Shorter calls stay in your recordings · 0: every call with audio
+    #[schemars(range(min = 0.0, max = 60.0))]
+    min_upload_s: f64,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { server: DEFAULT_SERVER.into() }
+        Config { server: DEFAULT_SERVER.into(), min_upload_s: 0.0 }
     }
 }
 
@@ -67,6 +72,11 @@ fn node<'a>(c: &'a SystemConfig, name: &'a str) -> Option<(&'a str, &'a str)> {
     let key = c.api_key.trim();
     let named = c.system_name.trim();
     (!key.is_empty()).then_some((if named.is_empty() { name } else { named }, key))
+}
+
+/// A call's audio, ms: `call_length` is whole seconds (a record without `call_length_ms`, its only length).
+fn audio_ms(call: &ConcludedCall) -> i64 {
+    Some(call.call.call_length_ms).filter(|&l| l > 0).unwrap_or((call.call.call_length * 1000.0).round() as i64)
 }
 
 /// One call's attempts, one for each OpenMHz system it went to, as one:
@@ -109,8 +119,8 @@ impl Plugin for OpenMhz {
             subscribe: vec![topic::CALL_CONCLUDED.into()],
             audio_formats: vec![format::M4A.into()],
             homepage: "https://openmhz.com".into(),
-            // A system can upload to another server (one of its own).
-            system_overrides: vec!["server".into()],
+            // A system can upload to another server (one of its own), and set its own shortest call.
+            system_overrides: vec!["server".into(), "minUploadS".into()],
             // A site that's an OpenMHz system of its own.
             site_overrides: vec!["apiKey".into(), "systemName".into()],
             ..trunk_recorder_plugin::manifest!()
@@ -174,6 +184,15 @@ impl Plugin for OpenMhz {
             };
             if !t.filter.passes(call.call.talkgroup) {
                 return Attempt::Skip(format!("talkgroup {} filtered out", call.call.talkgroup));
+            }
+            // An OpenMHz call is its audio: one with none (kept by "Keep calls with no audio"), or too little, stays local.
+            let ms = audio_ms(call);
+            if ms <= 0 {
+                return Attempt::Skip("no audio".into());
+            }
+            let min_s = t.system.settings.min_upload_s;
+            if (ms as f64) < min_s * 1000.0 {
+                return Attempt::Skip(format!("shorter than {min_s} s"));
             }
             let Some(m4a) = &call.files.m4a else {
                 return Attempt::Fail("no M4A for this call".into());
@@ -271,6 +290,47 @@ mod tests {
         let mut h = testing::hello(dir, json!({ "server": server }));
         h.systems[0].config = system;
         HostMessage::Hello(h)
+    }
+
+    #[test]
+    fn a_call_with_no_audio_is_skipped_not_uploaded() {
+        let (dir, server) = (testing::temp_dir("openmhz-silent"), openmhz());
+        let mut call = testing::call(&dir, "sys1", 101);
+        (call.call.call_length, call.call.call_length_ms) = (0.0, 0);
+        let out = testing::run::<OpenMhz>([hello(&dir, server.url(), json!({ "apiKey": "good" })), HostMessage::CallConcluded(call)]);
+        let r = out.results();
+        assert_eq!(r[0].1, Outcome::Skipped, "{r:?}");
+        assert!(r[0].2.contains("no audio"), "{}", r[0].2);
+        assert!(server.requests().is_empty());
+    }
+
+    /// The recorder's `call_length` is whole seconds: a 0.4 s call says 0 there, and has audio.
+    fn call_of(dir: &std::path::Path, tg: u32, ms: i64) -> HostMessage {
+        let mut c = testing::call(dir, "sys1", tg);
+        (c.call.call_length, c.call.call_length_ms) = ((ms as f64 / 1000.0).round(), ms);
+        HostMessage::CallConcluded(c)
+    }
+
+    #[test]
+    fn by_default_any_call_with_audio_is_uploaded() {
+        let (dir, server) = (testing::temp_dir("openmhz-short"), openmhz());
+        let out = testing::run::<OpenMhz>([hello(&dir, server.url(), json!({ "apiKey": "good" })), call_of(&dir, 101, 400)]);
+        assert_eq!(out.results()[0].1, Outcome::Ok);
+    }
+
+    #[test]
+    fn min_upload_s_keeps_short_calls_local() {
+        let (dir, server) = (testing::temp_dir("openmhz-min"), openmhz());
+        let mut h = testing::hello(&dir, json!({ "server": server.url(), "minUploadS": 1.0 }));
+        h.systems[0].config = json!({ "apiKey": "good" });
+        let calls = [(101, 400), (102, 990), (103, 1000), (104, 5000)].map(|(tg, ms)| call_of(&dir, tg, ms));
+        let out = testing::run::<OpenMhz>(std::iter::once(HostMessage::Hello(h)).chain(calls));
+        // (Uploads run at once: results come as they finish.)
+        let mut results = out.results();
+        results.sort_by(|a, b| a.0.cmp(&b.0));
+        let outcomes: Vec<Outcome> = results.into_iter().map(|r| r.1).collect();
+        assert_eq!(outcomes, [Outcome::Skipped, Outcome::Skipped, Outcome::Ok, Outcome::Ok]);
+        assert_eq!(server.requests().len(), 2);
     }
 
     #[test]
@@ -433,6 +493,34 @@ mod tests {
 
     /// A system can send its calls to a server of its own, with an endpoint
     /// status of its own; OpenMHz's own server is just "OpenMHz".
+    #[test]
+    fn a_system_sets_its_own_shortest_upload() {
+        let (dir, server) = (testing::temp_dir("openmhz-min-own"), openmhz());
+        let mut h = testing::hello(&dir, json!({ "server": server.url() }));
+        h.systems[0].config = json!({ "apiKey": "good" });
+        h.systems.push(SystemInfo {
+            index: 1,
+            short_name: "sys2".into(),
+            kind: "p25".into(),
+            config: json!({ "apiKey": "good", "systemName": "sys1" }),
+            settings: json!({ "minUploadS": 2.0 }),
+            ..Default::default()
+        });
+        let out = testing::run::<OpenMhz>([
+            HostMessage::Hello(h),
+            HostMessage::CallConcluded(testing::call(&dir, "sys1", 101)),
+            HostMessage::CallConcluded({
+                let mut c = testing::call(&dir, "sys2", 202);
+                c.call.call_length_ms = 1500;
+                c
+            }),
+        ]);
+        let mut results = out.results();
+        results.sort_by(|a, b| a.0.cmp(&b.0));
+        let outcomes: Vec<Outcome> = results.into_iter().map(|r| r.1).collect();
+        assert_eq!(outcomes, [Outcome::Ok, Outcome::Skipped]);
+    }
+
     #[test]
     fn a_system_overrides_the_server() {
         let (dir, main, own) = (testing::temp_dir("openmhz"), openmhz(), openmhz());

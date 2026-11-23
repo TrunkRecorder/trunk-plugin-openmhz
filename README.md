@@ -18,6 +18,7 @@ It does what Trunk Recorder's built-in OpenMHz uploader does.
 | Setting | |
 |---|---|
 | **Upload server** | Leave it as it is, unless you run your own OpenMHz server. A system can send to another (its *shared settings* on its card in Setup). |
+| **Shortest upload, s** | Calls with less audio than this stay in your recordings and aren't uploaded. `0` (the default) uploads every call that has audio. A system can set its own, like the server. |
 
 For each system:
 
@@ -40,7 +41,9 @@ entry that's none of these, and says which.
 For each recorded call of a system with an API key, it sends OpenMHz the
 call's M4A audio and its details: talkgroup, frequency, start and stop time,
 length, emergency flag, error counts, and the radios heard on it with their
-names. Nothing else, and nowhere else.
+names. Nothing else, and nowhere else. A call with no audio (the recorder's
+**Keep calls with no audio** keeps them) or shorter than **Shortest upload**
+is marked skipped, not sent.
 
 If OpenMHz can't be reached, the plugin tries the call again after 10 seconds,
 1 minute, 5 minutes and 15 minutes, and shows how many calls are waiting.
