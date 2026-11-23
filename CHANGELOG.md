@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+- Calls with no audio are no longer uploaded (the recorder keeps them when **Keep calls with no
+  audio** is on, and OpenMHz showed them as 0-second calls). They are marked skipped.
+- **Shortest upload, s**: calls shorter than this stay in your recordings and aren't uploaded. `0`,
+  the default, uploads every call that has audio; a system can set its own.
+
 ## [0.1.8]
 
 - Four uploads at once for each server, up from two. Every system sending to the same server shares
