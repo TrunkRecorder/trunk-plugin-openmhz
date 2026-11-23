@@ -6,6 +6,9 @@
   audio** is on, and OpenMHz showed them as 0-second calls). They are marked skipped.
 - **Shortest upload, s**: calls shorter than this stay in your recordings and aren't uploaded. `0`,
   the default, uploads every call that has audio; a system can set its own.
+- A busy OpenMHz (`429`/`503`) that says how long to wait (`Retry-After`) isn't sent the call again
+  sooner: uploads read its answers as every plugin now does (trunk-recorder-plugin's
+  `Attempt::from_status`). Built with trunk-recorder-plugin 0.15.0.
 
 ## [0.1.8]
 
