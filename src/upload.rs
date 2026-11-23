@@ -47,13 +47,14 @@ impl Uploader {
             Err(e) => return Attempt::Retry(e.to_string()),
         };
         let status = resp.status().as_u16();
+        let retry_after = resp.headers().get("retry-after").and_then(|v| v.to_str().ok()).map(str::to_string);
         let text = resp.body_mut().read_to_string().unwrap_or_default();
-        outcome(status, &text, u.system, &self.server)
+        outcome(status, retry_after.as_deref(), &text, u.system, &self.server)
     }
 }
 
 /// What a response means.
-fn outcome(status: u16, text: &str, system: &str, server: &str) -> Attempt {
+fn outcome(status: u16, retry_after: Option<&str>, text: &str, system: &str, server: &str) -> Attempt {
     if status == 200 {
         let url = if server == crate::DEFAULT_SERVER { format!("https://openmhz.com/system/{system}") } else { String::new() };
         return Attempt::Done { url };
@@ -73,11 +74,8 @@ fn outcome(status: u16, text: &str, system: &str, server: &str) -> Attempt {
     }
     let what = text.trim().lines().next().unwrap_or("").chars().take(200).collect::<String>();
     let why = if what.is_empty() { format!("HTTP {status}") } else { format!("HTTP {status}: {what}") };
-    match status {
-        // Something else about the request was wrong; it won't get better.
-        400..=499 if status != 408 && status != 429 => Attempt::Fail(why),
-        _ => Attempt::Retry(why),
-    }
+    // Any other 500 (OpenMHz's errors) is tried again, as a 5xx is.
+    Attempt::from_status(status, retry_after, why)
 }
 
 /// The multipart body, and its content type.
@@ -120,13 +118,16 @@ mod tests {
     #[test]
     fn responses() {
         let s = "https://api.openmhz.com";
-        assert!(matches!(outcome(200, "", "dcfd", s), Attempt::Done { url } if url == "https://openmhz.com/system/dcfd"));
-        assert!(matches!(outcome(500, "API Keys do not match!\n", "dcfd", s), Attempt::Fail(_)));
-        assert!(matches!(outcome(500, "ShortName does not exist: dcfd\n", "dcfd", s), Attempt::Fail(_)));
-        assert!(matches!(outcome(500, "Talkgroup does not exist, skipping.\n", "dcfd", s), Attempt::Skip(_)));
-        assert!(matches!(outcome(500, "Error parsing sourcelist", "dcfd", s), Attempt::Retry(_)));
-        assert!(matches!(outcome(502, "", "dcfd", s), Attempt::Retry(_)));
-        assert!(matches!(outcome(404, "", "dcfd", s), Attempt::Fail(_)));
-        assert!(matches!(outcome(429, "", "dcfd", s), Attempt::Retry(_)));
+        assert!(matches!(outcome(200, None, "", "dcfd", s), Attempt::Done { url } if url == "https://openmhz.com/system/dcfd"));
+        assert!(matches!(outcome(500, None, "API Keys do not match!\n", "dcfd", s), Attempt::Fail(_)));
+        assert!(matches!(outcome(500, None, "ShortName does not exist: dcfd\n", "dcfd", s), Attempt::Fail(_)));
+        assert!(matches!(outcome(500, None, "Talkgroup does not exist, skipping.\n", "dcfd", s), Attempt::Skip(_)));
+        assert!(matches!(outcome(500, None, "Error parsing sourcelist", "dcfd", s), Attempt::Retry(_)));
+        assert!(matches!(outcome(502, None, "", "dcfd", s), Attempt::Retry(_)));
+        assert!(matches!(outcome(404, None, "", "dcfd", s), Attempt::Fail(_)));
+        assert!(matches!(outcome(429, None, "", "dcfd", s), Attempt::Retry(_)));
+        // Busy, and it said for how long: waited on.
+        assert!(matches!(outcome(503, Some("120"), "", "dcfd", s), Attempt::Wait(_, w) if w.as_secs() == 120));
+        assert!(matches!(outcome(408, None, "", "dcfd", s), Attempt::Retry(_)));
     }
 }

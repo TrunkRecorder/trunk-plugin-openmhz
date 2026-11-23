@@ -79,18 +79,6 @@ fn audio_ms(call: &ConcludedCall) -> i64 {
     Some(call.call.call_length_ms).filter(|&l| l > 0).unwrap_or((call.call.call_length * 1000.0).round() as i64)
 }
 
-/// One call's attempts, one for each OpenMHz system it went to, as one:
-/// try again if any should be, else failed if any failed, else done if any took it.
-fn together(attempts: Vec<Attempt>) -> Attempt {
-    let rank = |a: &Attempt| match a {
-        Attempt::Retry(_) => 3,
-        Attempt::Fail(_) => 2,
-        Attempt::Done { .. } => 1,
-        Attempt::Skip(_) => 0,
-    };
-    attempts.into_iter().max_by_key(rank).unwrap_or(Attempt::Skip("nowhere to send it".into()))
-}
-
 struct OpenMhz {
     queue: CallQueue,
 }
@@ -208,7 +196,7 @@ impl Plugin for OpenMhz {
             if nodes.is_empty() {
                 return Attempt::Skip("none of the sites that heard it has an OpenMHz system".into());
             }
-            together(nodes.into_iter().map(|(system, api_key)| t.uploader.upload(&Upload { system, api_key, call: &call.call, audio: m4a })).collect())
+            Attempt::together(nodes.into_iter().map(|(system, api_key)| t.uploader.upload(&Upload { system, api_key, call: &call.call, audio: m4a })))
         });
         Ok(OpenMhz { queue })
     }
