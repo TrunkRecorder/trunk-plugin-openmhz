@@ -17,7 +17,7 @@ It does what Trunk Recorder's built-in OpenMHz uploader does.
 
 | Setting | |
 |---|---|
-| **Upload server** | Leave it as it is, unless you run your own OpenMHz server. |
+| **Upload server** | Leave it as it is, unless you run your own OpenMHz server. A system can send to another (its *shared settings* on its card in Setup). |
 
 For each system:
 
@@ -25,16 +25,22 @@ For each system:
 |---|---|
 | **API key** | The system's upload key from OpenMHz. Leave it empty to not upload that system. |
 | **Name on OpenMHz** | The system's short name on OpenMHz, if it differs from its short name in the recorder. |
-| **Shortest call to upload, s** | Calls with less audio than this stay in your recordings and aren't uploaded. `0` (the default) uploads every call that has audio. A call with no audio at all is never uploaded. OpenMHz shows lengths to the nearest second, so `0.5` keeps out what it would show as 0 s. |
+| **Talkgroups** | **Every talkgroup**, **Only some** or **All but some**. |
+| **Only these** | With **Only some**: upload these talkgroups and no others. |
+| **Except these** | With **Only some** or **All but some**: never upload these. |
+
+Talkgroups can be numbers, ranges or patterns: `1000-1099` is every talkgroup
+from 1000 to 1099, `*` stands for any digits and `?` for one, so `507*` is
+every talkgroup starting with 507 and `12???` every five-digit one starting
+with 12. Separate them with commas or spaces. The plugin won't start with an
+entry that's none of these, and says which.
 
 ## What it does with calls
 
 For each recorded call of a system with an API key, it sends OpenMHz the
 call's M4A audio and its details: talkgroup, frequency, start and stop time,
 length, emergency flag, error counts, and the radios heard on it with their
-names. Nothing else, and nowhere else. Calls with no audio (the recorder's
-"Keep calls with no audio" keeps them) and calls shorter than **Shortest call
-to upload** are marked skipped, not sent.
+names. Nothing else, and nowhere else.
 
 If OpenMHz can't be reached, the plugin tries the call again after 10 seconds,
 1 minute, 5 minutes and 15 minutes, and shows how many calls are waiting.
@@ -43,11 +49,25 @@ again. OpenMHz refusing a call (a wrong API key, an unknown system) isn't
 retried: the call is marked failed and the log says why. Calls on talkgroups
 your OpenMHz system ignores are marked skipped.
 
+## Sites
+
+In Trunk Recorder Pro a system can have several sites, and a call heard on
+more than one is saved once, from the site that heard it best. With one
+OpenMHz system for all of them there is nothing to set. If a site has an
+OpenMHz system of its own (as when each was a system in Trunk Recorder), give
+it its **API key** (and **Name on OpenMHz**, if not the site's name) in the
+site's row on the system's card in Setup. Every call it heard goes there,
+whichever site's copy was kept; a call two such sites heard goes to both, and
+one only the system's other sites heard goes to the system's. **Sites** on the
+card turns the plugin off for a site.
+
 ## Coming from Trunk Recorder
 
 Trunk Recorder's settings map across: `uploadServer` is **Upload server**, and
 each system's `apiKey` and `openmhzSystemId` are **API key** and **Name on
-OpenMHz**.
+OpenMHz**. Trunk Recorder systems that are sites of one system (`multiSite`)
+are one system here: give each site that has its own OpenMHz system its API
+key in its row on the system's card.
 
 ## Building
 

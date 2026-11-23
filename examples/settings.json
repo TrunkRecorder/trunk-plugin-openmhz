@@ -1,4 +1,4 @@
 {
   "config": { "server": "https://api.openmhz.com" },
-  "systems": { "county": { "apiKey": "your-openmhz-api-key" } }
+  "systems": { "county": { "apiKey": "your-openmhz-api-key", "talkgroupMode": "allBut", "talkgroupDeny": ["9000-9099"] } }
 }
