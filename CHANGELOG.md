@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.11]
 
 - Calls with no audio are no longer uploaded (the recorder keeps them when **Keep calls with no
   audio** is on, and OpenMHz showed them as 0-second calls). They are marked skipped.
