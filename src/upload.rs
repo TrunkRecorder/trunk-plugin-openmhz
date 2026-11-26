@@ -35,7 +35,7 @@ impl Uploader {
     pub fn upload(&self, u: &Upload) -> Attempt {
         let audio = match std::fs::read(u.audio) {
             Ok(b) => b,
-            Err(e) => return Attempt::Fail(format!("can't read {}: {e}", u.audio.display())),
+            Err(e) => return Attempt::Fail(format!("can't read its audio: {e}")),
         };
         let name = u.audio.file_name().map_or("call.m4a".into(), |n| n.to_string_lossy().into_owned());
         let (body, content_type) = form(u, &name, &audio);

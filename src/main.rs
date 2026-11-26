@@ -166,7 +166,7 @@ impl Plugin for OpenMhz {
                 return Attempt::Skip("no API key for this system".into());
             };
             if !t.filter.passes(call.call.talkgroup) {
-                return Attempt::Skip(format!("talkgroup {} filtered out", call.call.talkgroup));
+                return Attempt::Skip("talkgroup filter".into());
             }
             // An OpenMHz call is its audio: one with none (kept by "Keep calls with no audio"), or too little, stays local.
             if !call.call.has_audio() {

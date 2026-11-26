@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+- **Short, stable reasons for skipped and failed calls.** Trunk Recorder Pro after 0.5.1 counts a plugin's
+  calls by the reason it gives, on its card: a filtered talkgroup is now **talkgroup filter** (no longer with
+  its number), and an audio file that can't be read no longer names its path.
+
 ## [0.1.11]
 
 - Calls with no audio are no longer uploaded (the recorder keeps them when **Keep calls with no
