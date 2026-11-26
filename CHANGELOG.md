@@ -4,7 +4,8 @@
 
 - **Short, stable reasons for skipped and failed calls.** Trunk Recorder Pro after 0.5.1 counts a plugin's
   calls by the reason it gives, on its card: a filtered talkgroup is now **talkgroup filter** (no longer with
-  its number), and an audio file that can't be read no longer names its path.
+  its number; the log says which talkgroup, as an info line), and an audio file that can't be read no longer
+  names its path (the recorder's log of the failure names the call).
 
 ## [0.1.11]
 
