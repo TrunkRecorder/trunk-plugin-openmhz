@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.12]
 
 - **Short, stable reasons for skipped and failed calls.** Trunk Recorder Pro after 0.5.1 counts a plugin's
   calls by the reason it gives, on its card: a filtered talkgroup is now **talkgroup filter** (no longer with
