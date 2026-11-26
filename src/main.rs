@@ -161,12 +161,15 @@ impl Plugin for OpenMhz {
         let of = move |call: &ConcludedCall| names.get(&call.call.system_id).cloned().unwrap_or_else(|| call.call.short_name.clone());
         let lane_of_call = of.clone();
         let lane = move |call: &ConcludedCall| lanes.get(&lane_of_call(call)).map(|t| t.lane.clone()).unwrap_or_default();
+        // A call's own details, which its reason leaves out.
+        let log = host.clone();
         let queue = CallQueue::start_by(host, opts, lane, move |call: &ConcludedCall| {
             let Some(t) = targets.get(&of(call)) else {
                 return Attempt::Skip("no API key for this system".into());
             };
             if !t.filter.passes(call.call.talkgroup) {
-                return Attempt::Skip(format!("talkgroup {} filtered out", call.call.talkgroup));
+                log.info(format!("{}: talkgroup {} isn't uploaded (talkgroup filter)", call.path, call.call.talkgroup));
+                return Attempt::Skip("talkgroup filter".into());
             }
             // An OpenMHz call is its audio: one with none (kept by "Keep calls with no audio"), or too little, stays local.
             if !call.call.has_audio() {
@@ -434,6 +437,9 @@ mod tests {
         assert_eq!(sent, ["101", "512"]);
         let skipped: Vec<_> = out.results().into_iter().filter(|r| r.1 == Outcome::Skipped).collect();
         assert_eq!(skipped.len(), 2, "{skipped:?}");
+        // One reason for every filtered call; which talkgroup is in the log.
+        assert!(skipped.iter().all(|r| r.2 == "talkgroup filter"), "{skipped:?}");
+        assert!(out.logs().iter().any(|(_, l)| l.ends_with("talkgroup 150 isn't uploaded (talkgroup filter)")), "{:?}", out.logs());
         let out = testing::run::<OpenMhz>([hello(&dir, server.url(), json!({ "apiKey": "good", "talkgroupMode": "allBut", "talkgroupDeny": ["1-"] }))]);
         assert_eq!(out.exit_code, EXIT_CONFIG);
         assert!(out.status().unwrap().1.starts_with("sys1's talkgroups: \"1-\" isn't a talkgroup"), "{:?}", out.status());
